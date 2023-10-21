@@ -66,14 +66,18 @@ static void MX_TIM2_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 const int selecionarPino[4] = {S0_Pin, S1_Pin, S2_Pin, S3_Pin};
+
 uint16_t valorSensor[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valores Analogico Sensores
 int sensorDigital[16] = 	{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valores Digitais Sensores
 uint16_t corBranco[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Para calibração cor branca
 uint16_t corPreto[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Para calibração cor preta
 uint16_t mediaPB[16] ={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valor média calibração linha e chão
+uint16_t peso[16] = {1500, 1400, 1300, 1200, 1100, 1000, 900, 800, 700, 600, 500, 400, 300, 200, 100, 0}; //vetor com os pesos
 uint16_t PWMA = 0;
 uint16_t PWMB = 0;
-int linha = 1; // 1 -> Linha preta // 0-> Linha Branca
+uint16_t pos = 0;
+int linha = 0; // 1 -> Linha preta // 0-> Linha Branca
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	if(GPIO_Pin == BOT1_Pin) // Ações ao apertar o botão 1
@@ -121,7 +125,7 @@ void selecionarPinoMux(int pino)
 	}
 }
 
-void calibrarBrnaco() // Função de Medir a cor Branca
+void calibrarBranco() // Função de Medir a cor Branca
 {
 	for(int i = 0; i<6; i++)
 	{
@@ -270,10 +274,31 @@ void aplicarCalibracao() // Determina os valores digitais dos sensores apos cali
 	}
 }
 
-int leituraLinha() // Retorna Valor da média ponderada para utilizar no PID
+void leituraLinha() // Retorna Valor da média ponderada para utilizar no PID
 {
+	    int num = 0; // numerador
+	    int den = 0; // denominador
+
+
+	    for(int i = 0; i < 16; i++) {
+	        // soma ponderada
+	        num += sensorDigital[i] * peso[i];
+	        den += sensorDigital[i];
+	    }
+
+	    if (den != 0) {
+	        pos = (num / den);
+
+	       // LCD_print("pos", 1, 0);
+	        //sprintf(pos, "%d", pos);
+	       // LCD_print(pos,1, 6);
+	    } else {
+	    	LCD_print("erro0", 3, 0);
+	    }
 
 }
+
+
 void testeMotor()
 {
 	PWMA = 60000;
@@ -342,13 +367,21 @@ int main(void)
 	  {
 	  	 case 1:
 
-	  		LCD_print("Teste 1", 0, 0);
-	  		testeMotor();
+	  		LCD_print("Calibrar Preto", 0, 0);
+	  		HAL_Delay(5000);
+	  		calibrarPreto();
+	  		LCD_print("Calibrar Branco", 0, 0);
+	  		HAL_Delay(5000);
+	  		calibrarBranco();
+	  		calcularMediaSensores();
+
+	  		mode++;
 
 	  	break;
 
 	  	case 2:
-
+	  			aplicarCalibracao();
+	  		    leituraLinha();
 	  			LCD_print("Teste 2", 1, 1);
 
 
