@@ -76,7 +76,31 @@ uint16_t peso[16] = {1500, 1400, 1300, 1200, 1100, 1000, 900, 800, 700, 600, 500
 uint16_t PWMA = 0;
 uint16_t PWMB = 0;
 uint16_t pos = 0;
-int linha = 0; // 1 -> Linha preta // 0-> Linha Branca
+int linha = 0; // 0 -> Linha preta // 1-> Linha Branca
+
+/* Variáveis PID --------------------------------------------------------------------*/
+signed int error=0; // Posição- (Maior peso)/2
+//constantes PID
+uint16_t Kp = 5;
+uint16_t Kd=2;
+uint16_t Ki=1;
+
+//constantes auxiliares PID
+uint16_t propo;
+uint16_t deriv;
+uint16_t integral;
+uint16_t ultimopropo=0;
+
+//velocidades base
+uint16_t Velo1= 3000;
+uint16_t Velo2= 3000;
+uint16_t velomax=6000;
+
+
+
+
+
+
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
@@ -276,8 +300,11 @@ void aplicarCalibracao() // Determina os valores digitais dos sensores apos cali
 
 void leituraLinha() // Retorna Valor da média ponderada para utilizar no PID
 {
+	    /*Definindo e resetando variaveis*/
+
 	    int num = 0; // numerador
 	    int den = 0; // denominador
+	    pos = 0;
 
 
 	    for(int i = 0; i < 16; i++) {
@@ -298,8 +325,34 @@ void leituraLinha() // Retorna Valor da média ponderada para utilizar no PID
 
 }
 
+void PID(){
+	/* Essa função atualiza os valores das variáveis PWMA e PWMB, as variáveis veloA e veloB forma a velocidade base
 
-void testeMotor()
+	 */
+
+                         error = (pos -750);
+
+                         propo= error;                         //função proporcional
+
+                         deriv=propo-ultimopropo;             //função derivativo
+
+                         integral=propo+deriv;                //função integral
+
+                         ultimopropo=propo;
+
+
+                         PWMA =(Velo1 +(Kp*propo+deriv*Kd+integral*Ki));
+                         PWMB =(Velo2 -(Kp*propo+deriv*Kd+integral*Ki));
+
+                         if(PWMA>velomax){
+                        	 PWMA=velomax;
+                         }
+                         if(PWMB>velomax){
+                        	 PWMB=velomax;
+                         }
+
+}
+void setPWM()
 {
 	PWMA = 60000;
 	PWMB = 2700;
