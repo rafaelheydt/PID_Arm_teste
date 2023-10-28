@@ -81,22 +81,22 @@ int linha = 0; // 0 -> Linha preta // 1-> Linha Branco
 char Buffer[20];
 
 /* Variáveis PID --------------------------------------------------------------------*/
-signed int error=0; // Posição- (Maior peso)/2
+int error=0; // Posição- (Maior peso)/2
 //constantes PID
-uint16_t Kp = 7;
+uint16_t Kp = 2;
 uint16_t Kd=1;
 uint16_t Ki=0;
 
 //constantes auxiliares PID
-uint16_t propo;
-uint16_t deriv;
+int propo;
+int deriv;
 uint16_t integral;
 uint16_t ultimopropo=0;
 
 //velocidades base
-uint16_t Velo1= 500; // Motor Direita
+uint16_t Velo1= 300; // Motor Direita
 uint16_t Velo2= 500; // Motor Esquerda
-uint16_t velomax=3560;//4560
+uint16_t velomax= 2506;//4560
 
 
 
@@ -331,17 +331,11 @@ void PID(){
 	/* Essa função atualiza os valores das variáveis PWMA e PWMB, as variáveis veloA e veloB forma a velocidade base
 
 	 */
-
                          error = (pos -750);
-
                          propo= error;                         //função proporcional
-
                          deriv=propo-ultimopropo;             //função derivativo
-
                          integral=propo+deriv;                //função integral
-
                          ultimopropo=propo;
-
 
                          PWMA =(Velo1 +((Kp*propo)+(deriv*Kd)+(integral*Ki)));
                          PWMB =(Velo2 -((Kp*propo)+(deriv*Kd)+(integral*Ki)));
