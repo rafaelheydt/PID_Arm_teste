@@ -73,17 +73,17 @@ uint16_t corBranco[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Para calibração
 uint16_t corPreto[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Para calibração cor preta
 uint16_t mediaPB[16] ={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valor média calibração linha e chão
 uint16_t peso[16] = {1500, 1400, 1300, 1200, 1100, 1000, 900, 800, 700, 600, 500, 400, 300, 200, 100, 0}; //vetor com os pesos
-uint16_t PWMA = 0;
-uint16_t PWMB = 0;
+uint32_t PWMA = 0;
+uint32_t PWMB = 0;
 uint16_t pos = 0;
 int linha = 0; // 0 -> Linha preta // 1-> Linha Branca
 
 /* Variáveis PID --------------------------------------------------------------------*/
 signed int error=0; // Posição- (Maior peso)/2
 //constantes PID
-uint16_t Kp = 5;
-uint16_t Kd=2;
-uint16_t Ki=1;
+uint16_t Kp = 2;
+uint16_t Kd=0;
+uint16_t Ki=0;
 
 //constantes auxiliares PID
 uint16_t propo;
@@ -92,9 +92,9 @@ uint16_t integral;
 uint16_t ultimopropo=0;
 
 //velocidades base
-uint16_t Velo1= 3000;
-uint16_t Velo2= 3000;
-uint16_t velomax=6000;
+uint16_t Velo1= 1500; // Motor Direita
+uint16_t Velo2= 1500; // Motor Esquerda
+uint16_t velomax=3560;//4560
 
 
 
@@ -354,13 +354,24 @@ void PID(){
 }
 void setPWM()
 {
-	PWMA = 60000;
-	PWMB = 2700;
+
 	TIM2->CCR2= PWMA;
 	TIM1->CCR1 = PWMB;
+
+}
+
+void ligarMotorA() // Motor A-> Esquerda
+{
 	HAL_GPIO_WritePin(STBY_GPIO_Port,STBY_Pin, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(AI1_GPIO_Port,AI1_Pin, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(AI2_GPIO_Port,AI2_Pin, GPIO_PIN_RESET);
+}
+
+void ligarMotorB() // Motor B-> Direita
+{
+
+	HAL_GPIO_WritePin(BI1_GPIO_Port,BI1_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(BI2_GPIO_Port,BI2_Pin, GPIO_PIN_RESET);
 }
 /* USER CODE END 0 */
 
@@ -427,15 +438,23 @@ int main(void)
 	  		HAL_Delay(5000);
 	  		calibrarBranco();
 	  		calcularMediaSensores();
-
+  		    ligarMotorA();
+  		    ligarMotorB();
 	  		mode++;
 
 	  	break;
 
 	  	case 2:
+	  			HAL_Delay(2000);
+  				LCD_print("Anda fi", 3, 0);
 	  			aplicarCalibracao();
 	  		    leituraLinha();
-	  			LCD_print("Teste 2", 1, 1);
+	  		    PID();
+	  		    setPWM();
+
+
+
+
 
 
 
@@ -560,11 +579,11 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 0;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 65535;
+  htim1.Init.Period = 4570;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_OC_Init(&htim1) != HAL_OK)
+  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -574,14 +593,14 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_FORCED_ACTIVE;
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
   sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_OC_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -624,7 +643,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 0;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4294967295;
+  htim2.Init.Period = 4570;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
