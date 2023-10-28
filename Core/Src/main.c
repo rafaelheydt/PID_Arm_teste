@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "nokia5110_LCD.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 
 /* USER CODE END Includes */
@@ -76,13 +77,14 @@ uint16_t peso[16] = {1500, 1400, 1300, 1200, 1100, 1000, 900, 800, 700, 600, 500
 uint32_t PWMA = 0;
 uint32_t PWMB = 0;
 uint16_t pos = 0;
-int linha = 0; // 0 -> Linha preta // 1-> Linha Branca
+int linha = 0; // 0 -> Linha preta // 1-> Linha Branco
+char Buffer[20];
 
 /* Variáveis PID --------------------------------------------------------------------*/
 signed int error=0; // Posição- (Maior peso)/2
 //constantes PID
-uint16_t Kp = 2;
-uint16_t Kd=0;
+uint16_t Kp = 7;
+uint16_t Kd=1;
 uint16_t Ki=0;
 
 //constantes auxiliares PID
@@ -92,8 +94,8 @@ uint16_t integral;
 uint16_t ultimopropo=0;
 
 //velocidades base
-uint16_t Velo1= 1500; // Motor Direita
-uint16_t Velo2= 1500; // Motor Esquerda
+uint16_t Velo1= 500; // Motor Direita
+uint16_t Velo2= 500; // Motor Esquerda
 uint16_t velomax=3560;//4560
 
 
@@ -341,8 +343,8 @@ void PID(){
                          ultimopropo=propo;
 
 
-                         PWMA =(Velo1 +(Kp*propo+deriv*Kd+integral*Ki));
-                         PWMB =(Velo2 -(Kp*propo+deriv*Kd+integral*Ki));
+                         PWMA =(Velo1 +((Kp*propo)+(deriv*Kd)+(integral*Ki)));
+                         PWMB =(Velo2 -((Kp*propo)+(deriv*Kd)+(integral*Ki)));
 
                          if(PWMA>velomax){
                         	 PWMA=velomax;
@@ -441,12 +443,16 @@ int main(void)
   		    ligarMotorA();
   		    ligarMotorB();
 	  		mode++;
+	  		LCD_print("Calibrado", 0, 0);
+  			HAL_Delay(3000);
 
 	  	break;
 
 	  	case 2:
-	  			HAL_Delay(2000);
+
   				LCD_print("Anda fi", 3, 0);
+  				sprintf(Buffer, "%d", error);
+  				LCD_print(Buffer, 1, 8);
 	  			aplicarCalibracao();
 	  		    leituraLinha();
 	  		    PID();
