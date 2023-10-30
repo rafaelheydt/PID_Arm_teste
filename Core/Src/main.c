@@ -84,7 +84,7 @@ char Buffer[20];
 int error=0; // Posição- (Maior peso)/2
 //constantes PID
 uint16_t Kp = 2;
-uint16_t Kd=1;
+uint16_t Kd=0;
 uint16_t Ki=0;
 
 //constantes auxiliares PID
@@ -94,12 +94,9 @@ uint16_t integral;
 uint16_t ultimopropo=0;
 
 //velocidades base
-uint16_t Velo1= 300; // Motor Direita
-uint16_t Velo2= 500; // Motor Esquerda
+uint16_t Velo1= 800; // Motor Direita
+uint16_t Velo2= 800; // Motor Esquerda
 uint16_t velomax= 2506;//4560
-
-
-
 
 
 
@@ -109,11 +106,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	if(GPIO_Pin == BOT1_Pin) // Ações ao apertar o botão 1
 	{
 		LCD_clrScr();
-		mode += 1;
-		if(mode == 3)
-		{
-			mode = 1;
-		}
+		//mode += 1;
+		//if(mode == 3)
+		//{
+			//mode = 1;
+		//}
 	}
 	if(GPIO_Pin == BOT2_Pin) // Ações ao apertar botão 2
 	{
@@ -427,26 +424,29 @@ int main(void)
 	  {
 	  	 case 1:
 
-	  		LCD_print("Calibrar Preto", 0, 0);
+	  		LCD_print("CalibrarPreto", 0, 0);
 	  		HAL_Delay(5000);
 	  		calibrarPreto();
-	  		LCD_print("Calibrar Branco", 0, 0);
+	  		LCD_print("CalibrarBranco", 0, 0);
 	  		HAL_Delay(5000);
 	  		calibrarBranco();
 	  		calcularMediaSensores();
   		    ligarMotorA();
   		    ligarMotorB();
 	  		mode++;
+	  		LCD_clrScr();
 	  		LCD_print("Calibrado", 0, 0);
   			HAL_Delay(3000);
+  			LCD_clrScr();
+  			LCD_print("Andar", 0, 0);
 
 	  	break;
 
 	  	case 2:
 
-  				LCD_print("Anda fi", 3, 0);
+
   				sprintf(Buffer, "%d", error);
-  				LCD_print(Buffer, 1, 8);
+  				LCD_print(Buffer, 3, 3);
 	  			aplicarCalibracao();
 	  		    leituraLinha();
 	  		    PID();
