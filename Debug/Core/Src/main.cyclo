@@ -1,4 +1,4 @@
-../Core/Src/main.c:104:6:HAL_GPIO_EXTI_Callback	2
+../Core/Src/main.c:104:6:HAL_GPIO_EXTI_Callback	3
 ../Core/Src/main.c:121:6:selecionarPinoMux	5
 ../Core/Src/main.c:151:6:calibrarBranco	4
 ../Core/Src/main.c:176:6:calibrarPreto	4

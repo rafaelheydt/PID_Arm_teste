@@ -50,7 +50,7 @@ TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
-uint8_t mode = 1;
+uint8_t mode = 0;
 
 /* USER CODE END PV */
 
@@ -94,7 +94,7 @@ uint16_t integral;
 uint16_t ultimopropo=0;
 
 //velocidades base
-uint16_t Velo1= 800; // Motor Direita
+uint16_t Velo1= 500; // Motor Direita
 uint16_t Velo2= 800; // Motor Esquerda
 uint16_t velomax= 2506;//4560
 
@@ -106,11 +106,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	if(GPIO_Pin == BOT1_Pin) // Ações ao apertar o botão 1
 	{
 		LCD_clrScr();
-		//mode += 1;
-		//if(mode == 3)
-		//{
-			//mode = 1;
-		//}
+		mode += 1;
+		if(mode == 3)
+		{
+			mode = 2;
+		}
 	}
 	if(GPIO_Pin == BOT2_Pin) // Ações ao apertar botão 2
 	{
