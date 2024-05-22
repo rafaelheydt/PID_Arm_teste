@@ -50,7 +50,7 @@ TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
-uint8_t mode = 0;
+
 
 /* USER CODE END PV */
 
@@ -83,22 +83,23 @@ char Buffer[20];
 /* Variáveis PID --------------------------------------------------------------------*/
 int error=0; // Posição- (Maior peso)/2
 //constantes PID
-uint16_t Kp = 2;
-uint16_t Kd=0;
-uint16_t Ki=0;
+float Kp = 2;
+float Kd=0;
+float Ki=0;
 
 //constantes auxiliares PID
+int def_pos = 750;
 int propo;
 int deriv;
 uint16_t integral;
 uint16_t ultimopropo=0;
 
 //velocidades base
-uint16_t Velo1= 500; // Motor Direita
-uint16_t Velo2= 800; // Motor Esquerda
+uint16_t Velo1= 750; // Motor Direita
+uint16_t Velo2= 750; // Motor Esquerda
 uint16_t velomax= 2506;//4560
 
-
+uint8_t estado = 0;
 
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -106,15 +107,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	if(GPIO_Pin == BOT1_Pin) // Ações ao apertar o botão 1
 	{
 		LCD_clrScr();
-		mode += 1;
-		if(mode == 3)
-		{
-			mode = 2;
-		}
+		estado = 1;
+
+
 	}
 	if(GPIO_Pin == BOT2_Pin) // Ações ao apertar botão 2
 	{
-
+		estado = 2;
 	}
 }
 
@@ -319,7 +318,7 @@ void leituraLinha() // Retorna Valor da média ponderada para utilizar no PID
 	        //sprintf(pos, "%d", pos);
 	       // LCD_print(pos,1, 6);
 	    } else {
-	    	LCD_print("erro0", 3, 0);
+	    	LCD_print("erro", 3, 0);
 	    }
 
 }
@@ -328,7 +327,7 @@ void PID(){
 	/* Essa função atualiza os valores das variáveis PWMA e PWMB, as variáveis veloA e veloB forma a velocidade base
 
 	 */
-                         error = (pos -750);
+                         error = (pos - def_pos);
                          propo= error;                         //função proporcional
                          deriv=propo-ultimopropo;             //função derivativo
                          integral=propo+deriv;                //função integral
@@ -344,11 +343,12 @@ void PID(){
                         	 PWMB=velomax;
                          }
 
+
 }
 void setPWM()
 {
 
-	TIM2->CCR2= PWMA;
+	TIM2->CCR2=  PWMA;
 	TIM1->CCR1 = PWMB;
 
 }
@@ -420,42 +420,46 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  switch(mode)
+	  switch(estado)
 	  {
-	  	 case 1:
+	  	 case 0:
+	  		aplicarCalibracao();
+	  		leituraLinha();
+	  		PID();
+			sprintf(Buffer, "%d", error);
+			LCD_print(Buffer, 3, 3);
 
-	  		LCD_print("CalibrarPreto", 0, 0);
+		 break;
+
+	  	 case 1:
+	  		LCD_clrScr();
+
+	  		LCD_print("Calibrar Preto", 0, 0);
 	  		HAL_Delay(5000);
 	  		calibrarPreto();
-	  		LCD_print("CalibrarBranco", 0, 0);
+	  		LCD_clrScr();
+	  		LCD_print("Calibrar Branco", 0, 0);
 	  		HAL_Delay(5000);
 	  		calibrarBranco();
 	  		calcularMediaSensores();
   		    ligarMotorA();
   		    ligarMotorB();
-	  		mode++;
 	  		LCD_clrScr();
 	  		LCD_print("Calibrado", 0, 0);
-  			HAL_Delay(3000);
-  			LCD_clrScr();
-  			LCD_print("Andar", 0, 0);
+	  		aplicarCalibracao();
+	  		estado = 0;
+
 
 	  	break;
 
 	  	case 2:
-
-
-  				sprintf(Buffer, "%d", error);
-  				LCD_print(Buffer, 3, 3);
+	  			LCD_clrScr();
+	  			LCD_print("Começar andar", 0, 0);
 	  			aplicarCalibracao();
 	  		    leituraLinha();
 	  		    PID();
+
 	  		    setPWM();
-
-
-
-
-
 
 
 	  	break;
