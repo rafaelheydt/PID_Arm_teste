@@ -84,9 +84,9 @@ char Buffer[20];
 /* Variáveis PID --------------------------------------------------------------------*/
 int error=0; // Posição- (Maior peso)/2
 //constantes PID
-float Kp = 1.2;
-float Kd=2.5;
-float Ki=0.01;
+float Kp =2;//2
+float Kd= 4.75;//4.75
+float Ki=0.0001;//0.0001
 
 //constantes auxiliares PID
 int def_pos = 750;
@@ -95,17 +95,22 @@ int deriv=0;
 int integral=0;
 int ultimopropo=0;
 // Erro Integral
+int error0 =0;
 int error1=0;
 int error2=0;
 int error3=0;
 int error4=0;
 int error5=0;
 int error6=0;
+int error7=0;
+int error8=0;
+int error9=0;
+
 
 //velocidades base
-uint16_t Velo1= 1050; // Motor Direita
-uint16_t Velo2= 1050; // Motor Esquerda
-uint16_t velomax= 2500;//4560
+uint16_t Velo1= 1250;//1450 // Motor Direita
+uint16_t Velo2= 1250;//1450 // Motor Esquerda
+int16_t velomax= 2500;//4560
 int16_t somaA = 0;
 int16_t somaB =0;
 
@@ -343,31 +348,33 @@ void PID(){
                          error = (pos - def_pos);
                          propo= error;                         //função proporcional
                          deriv=propo-ultimopropo;             //função derivativo
-                         integral=error1 + error2 + error3+ error4+ error5+ error6;                //função integral
+                         integral=error0+error1 + error2 + error3+ error4+ error5+ error6+error7+error8+error9;                //função integral
                          ultimopropo=propo;
+                         error9 = error8;
+                         error8 = error7;
+                         error7 = error6;
                          error6=error5;
                          error5=error4;
                          error4=error3;
                          error3=error2;
                          error2=error1;
-                         error1=propo;
+                         error1 = error0;
+                         error0=propo;
                          Kpid = (Kp*propo)+(deriv*Kd)+(integral*Ki);
                          if(Kpid>velomax)
                          {
 							Kpid=velomax;
                          }
-                         else if (Kpid<-velomax)
-                         {
-                        	 Kpid=-velomax;
-                         }
+
+
                          somaA = Velo1 - Kpid;
                          if(somaA>velomax)
                          {
                         	 somaA = velomax;
                          }
-                         else if (somaA <-velomax)
+                         else if (somaA <0)
                          {
-                        	 somaA = velomax;
+                        	 somaA = -somaA;
                          }
                          somaB = Velo2 +Kpid;
 
@@ -375,9 +382,9 @@ void PID(){
                          {
                         	 somaB = velomax;
                          }
-                         else if (somaB < - velomax)
+                         else if (somaB <  0)
                          {
-                        	 somaB = velomax;
+                        	 somaB = -somaB;
                          }
                          PWMA =(somaA);
                          PWMB = (somaB);
