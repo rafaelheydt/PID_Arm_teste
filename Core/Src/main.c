@@ -78,34 +78,38 @@ int16_t PWMA = 0;
 int16_t PWMB = 0;
 uint16_t pos = 0;
 int Kpid = 0;
-int poslast = 0;
+
+uint16_t poslast = 0;
+uint16_t posLastMax = 1400;
+uint16_t posLastMin = 100;
+uint16_t posMax = 1500;
+uint16_t posMin = 0;
 int linha = 0; // 0 -> Linha preta // 1-> Linha Branco
 char Buffer[20];
-/* Variáveis PID --------------------------------------------------------------------*/
+/* Variáveis PID --
+ * ------------------------------------------------------------------*/
 int error=0; // Posição- (Maior peso)/2
 //constantes PID
-float Kp = 1.2;
-float Kd=2.5;
-float Ki=0.01;
+float Kp = 3.025;//2.025;
+float Kd= 8.1;//8.1
+float Ki=0.1;////0.0001;
 
 //constantes auxiliares PID
-int def_pos = 750;
+uint16_t def_pos = 750;
 int propo=0;
 int deriv=0;
 int integral=0;
-int ultimopropo=0;
+int ultimoError=0;
+
+float alpha = 0.1;
 // Erro Integral
-int error1=0;
-int error2=0;
-int error3=0;
-int error4=0;
-int error5=0;
-int error6=0;
+int erros[10] = {0, 0, 0, 0, 0, 0,0,0,0,0};
 
 //velocidades base
-uint16_t Velo1= 1050; // Motor Direita
-uint16_t Velo2= 1050; // Motor Esquerda
-uint16_t velomax= 2500;//4560
+uint16_t Velo1= 1500; // Motor Direita
+uint16_t Velo2= 1500; // Motor Esquerda
+uint16_t velomax= 4400;//4560
+uint16_t veloMin = 0;
 int16_t somaA = 0;
 int16_t somaB =0;
 
@@ -198,6 +202,7 @@ void calibrarPreto() // Função de medir a cor Preta
 		HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
 		corPreto[25-j] = HAL_ADC_GetValue(&hadc1);
 	}
+
 	for(int k = 6; k<10; k++)
 	{
 		selecionarPinoMux(k);
@@ -320,12 +325,20 @@ void leituraLinha() // Retorna Valor da média ponderada para utilizar no PID
 	        num += sensorDigital[i] * peso[i];
 	        den += sensorDigital[i];
 	    }
-	    pos = (num / den);
-	    if(poslast<=100 && pos==-1){
-	      pos=0;
+
+	    if (den != 0) {
+	        pos = (num / den);
 	    }
-	    if(poslast>=1400 && pos==-1){
-	      pos=1500;
+	    else
+	    {
+	        pos = poslast;
+	    }
+
+	    if(poslast<=posLastMin && pos==-1){
+	      pos=posMin;
+	    }
+	    if(poslast>=posLastMax && pos==-1){
+	      pos=posMax;
 	    }
 	    poslast = pos;
 
@@ -341,52 +354,49 @@ void PID(){
 
 	 */
                          error = (pos - def_pos);
-                         propo= error;                         //função proporcional
-                         deriv=propo-ultimopropo;             //função derivativo
-                         integral=error1 + error2 + error3+ error4+ error5+ error6;                //função integral
-                         ultimopropo=propo;
-                         error6=error5;
-                         error5=error4;
-                         error4=error3;
-                         error3=error2;
-                         error2=error1;
-                         error1=propo;
-                         Kpid = (Kp*propo)+(deriv*Kd)+(integral*Ki);
-                         if(Kpid>velomax)
-                         {
-							Kpid=velomax;
+                         propo = Kp*error;                         //função proporcional
+
+                         deriv = alpha * ((Kd * error) - (Kd * ultimoError)) + (1 - alpha) * deriv;
+
+                         ultimoError=error;
+                         integral = 0;
+                         for (int i = 9; i > 0; i--) {
+                        	 erros[i] = erros[i-1];
+                             integral += Ki*erros[i];
                          }
-                         else if (Kpid<-velomax)
-                         {
-                        	 Kpid=-velomax;
-                         }
+                         erros[0] = error;
+                         integral += Ki*erros[0];
+
+                         Kpid = (propo)+(deriv)+(integral);
+
                          somaA = Velo1 - Kpid;
+
                          if(somaA>velomax)
                          {
                         	 somaA = velomax;
                          }
-                         else if (somaA <-velomax)
+                         else if(somaA<0)
                          {
-                        	 somaA = velomax;
+                        	 somaA = veloMin;
                          }
+
+
                          somaB = Velo2 +Kpid;
 
                          if(somaB >velomax)
                          {
                         	 somaB = velomax;
                          }
-                         else if (somaB < - velomax)
+                         else if(somaB<0)
                          {
-                        	 somaB = velomax;
+                        	 somaB = veloMin;
                          }
+
                          PWMA =(somaA);
                          PWMB = (somaB);
 
-
-
-
-
 }
+
 void setPWM()
 {
 
@@ -476,6 +486,8 @@ int main(void)
 			sprintf(Buffer, "%d", PWMB);
 			LCD_print(Buffer, 1, 1);
 
+			sprintf(Buffer, "%d", error);
+			LCD_print(Buffer, 0, 10);
 		 break;
 
 	  	 case 1:
@@ -502,10 +514,10 @@ int main(void)
 	  	case 2:
 	  			LCD_clrScr();
 	  			LCD_print("Começar andar", 0, 0);
+
 	  			aplicarCalibracao();
 	  		    leituraLinha();
 	  		    PID();
-
 	  		    setPWM();
 	  		    estado = 2;
 
