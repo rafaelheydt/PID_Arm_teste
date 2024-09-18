@@ -66,10 +66,16 @@ static void MX_TIM2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void ParaTrasMotorA();
+void ParaTrasMotorB();
+void ForwardMotorA();
+void ForwardMotorB();
+
 const int selecionarPino[4] = {S0_Pin, S1_Pin, S2_Pin, S3_Pin};
 
 uint16_t valorSensor[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valores Analogico Sensores
-int sensorDigital[16] = 	{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valores Digitais Sensores
+int sensorDigital[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valores Digitais Sensores
 uint16_t corBranco[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Para calibração cor branca
 uint16_t corPreto[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Para calibração cor preta
 uint16_t mediaPB[16] ={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valor média calibração linha e chão
@@ -90,9 +96,9 @@ char Buffer[20];
  * ------------------------------------------------------------------*/
 int error=0; // Posição- (Maior peso)/2
 //constantes PID
-float Kp = 3.025;//2.025;
-float Kd= 8.1;//8.1
-float Ki=0.1;////0.0001;
+float Kp = 0.35;//2.025;
+float Kd= 2.406;//8.1
+float Ki= 0.02;////0.0001;
 
 //constantes auxiliares PID
 uint16_t def_pos = 750;
@@ -103,12 +109,13 @@ int ultimoError=0;
 
 float alpha = 0.1;
 // Erro Integral
-int erros[10] = {0, 0, 0, 0, 0, 0,0,0,0,0};
+int erros[5] = {0, 0, 0, 0, 0};
+int NUM_ERROS = 5;
 
 //velocidades base
-uint16_t Velo1= 1500; // Motor Direita
-uint16_t Velo2= 1500; // Motor Esquerda
-uint16_t velomax= 4400;//4560
+int16_t Velo1= 200; // Motor Direita
+int16_t Velo2= 200; // Motor Esquerda
+uint16_t velomax= 500;//
 uint16_t veloMin = 0;
 int16_t somaA = 0;
 int16_t somaB =0;
@@ -356,11 +363,11 @@ void PID(){
                          error = (pos - def_pos);
                          propo = Kp*error;                         //função proporcional
 
-                         deriv = alpha * ((Kd * error) - (Kd * ultimoError)) + (1 - alpha) * deriv;
-
+                         //deriv = alpha * ((Kd * error) - (Kd * ultimoError)) + (1 - alpha) * deriv;
+                         deriv = Kd*(error) - (Kd*ultimoError);
                          ultimoError=error;
                          integral = 0;
-                         for (int i = 9; i > 0; i--) {
+                         for (int i = NUM_ERROS-1; i > 0; i--) {
                         	 erros[i] = erros[i-1];
                              integral += Ki*erros[i];
                          }
@@ -370,6 +377,8 @@ void PID(){
                          Kpid = (propo)+(deriv)+(integral);
 
                          somaA = Velo1 - Kpid;
+                         ForwardMotorA();
+                         ForwardMotorB();
 
                          if(somaA>velomax)
                          {
@@ -378,6 +387,8 @@ void PID(){
                          else if(somaA<0)
                          {
                         	 somaA = veloMin;
+                        	 //ParaTrasMotorA();
+
                          }
 
 
@@ -389,6 +400,7 @@ void PID(){
                          }
                          else if(somaB<0)
                          {
+                        	 //ParaTrasMotorB();
                         	 somaB = veloMin;
                          }
 
@@ -405,19 +417,32 @@ void setPWM()
 
 }
 
-void ligarMotorA() // Motor A-> Esquerda
+void ForwardMotorA() // Motor A-> Esquerda
 {
 	HAL_GPIO_WritePin(STBY_GPIO_Port,STBY_Pin, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(AI1_GPIO_Port,AI1_Pin, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(AI2_GPIO_Port,AI2_Pin, GPIO_PIN_RESET);
 }
 
-void ligarMotorB() // Motor B-> Direita
+void ForwardMotorB() // Motor B-> Direita
 {
-
 	HAL_GPIO_WritePin(BI1_GPIO_Port,BI1_Pin, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(BI2_GPIO_Port,BI2_Pin, GPIO_PIN_RESET);
 }
+
+void ParaTrasMotorA()
+{
+	HAL_GPIO_WritePin(AI1_GPIO_Port,AI1_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(AI2_GPIO_Port,AI2_Pin, GPIO_PIN_SET);
+}
+
+void ParaTrasMotorB()
+{
+	HAL_GPIO_WritePin(BI1_GPIO_Port,BI1_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(BI2_GPIO_Port,BI2_Pin, GPIO_PIN_SET);
+}
+
+
 /* USER CODE END 0 */
 
 /**
@@ -501,8 +526,7 @@ int main(void)
 	  		HAL_Delay(5000);
 	  		calibrarBranco();
 	  		calcularMediaSensores();
-  		    ligarMotorA();
-  		    ligarMotorB();
+
 	  		LCD_clrScr();
 	  		LCD_print("Calibrado", 0, 0);
 	  		aplicarCalibracao();
@@ -641,9 +665,9 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 0;
+  htim1.Init.Prescaler = 15;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 4570;
+  htim1.Init.Period = 501;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -705,9 +729,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
+  htim2.Init.Prescaler = 15;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4570;
+  htim2.Init.Period = 501;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
