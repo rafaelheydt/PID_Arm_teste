@@ -86,8 +86,8 @@ uint16_t pos = 0;
 int Kpid = 0;
 
 uint16_t poslast = 0;
-uint16_t posLastMax = 1400;
-uint16_t posLastMin = 100;
+uint16_t posLastMax = 1500;
+uint16_t posLastMin = 0;
 uint16_t posMax = 1500;
 uint16_t posMin = 0;
 int linha = 0; // 0 -> Linha preta // 1-> Linha Branco
@@ -97,8 +97,8 @@ char Buffer[20];
 int error=0; // Posição- (Maior peso)/2
 //constantes PID
 float Kp = 0.35;//2.025;
-float Kd= 2.406;//8.1
-float Ki= 0.02;////0.0001;
+float Kd= 2.245;//8.1
+float Ki= 0.0225;////0.0001;
 
 //constantes auxiliares PID
 uint16_t def_pos = 750;
@@ -109,8 +109,8 @@ int ultimoError=0;
 
 float alpha = 0.1;
 // Erro Integral
-int erros[5] = {0, 0, 0, 0, 0};
-int NUM_ERROS = 5;
+int erros[10] = {0, 0, 0, 0, 0,0,0,0,0,0};
+int NUM_ERROS = 10;
 
 //velocidades base
 int16_t Velo1= 200; // Motor Direita
@@ -336,6 +336,12 @@ void leituraLinha() // Retorna Valor da média ponderada para utilizar no PID
 	    if (den != 0) {
 	        pos = (num / den);
 	    }
+	    /*
+	    else if(num == 0)
+	    {
+	    	pos = 0;
+	    }
+	    */
 	    else
 	    {
 	        pos = poslast;
@@ -360,52 +366,100 @@ void PID(){
 	/* Essa função atualiza os valores das variáveis PWMA e PWMB, as variáveis veloA e veloB forma a velocidade base
 
 	 */
-                         error = (pos - def_pos);
-                         propo = Kp*error;                         //função proporcional
+	error = (pos - def_pos);
+	if(pos<=100)
+	{
+		somaA = 100;
+		somaB = 200;
+		ParaTrasMotorA();
 
-                         //deriv = alpha * ((Kd * error) - (Kd * ultimoError)) + (1 - alpha) * deriv;
-                         deriv = Kd*(error) - (Kd*ultimoError);
-                         ultimoError=error;
-                         integral = 0;
-                         for (int i = NUM_ERROS-1; i > 0; i--) {
-                        	 erros[i] = erros[i-1];
-                             integral += Ki*erros[i];
-                         }
-                         erros[0] = error;
-                         integral += Ki*erros[0];
+	}
+	else if(pos>=1400)
+	{
+		somaA = 200;
+		somaB = 100;
+		ParaTrasMotorB();
+	}
+	else
+	{
 
-                         Kpid = (propo)+(deriv)+(integral);
+		/*
+		if(abs(error)> 600)
+		{
+			Kd = 1.1*Kd;
+			Kp = 1.1*Kp;
 
-                         somaA = Velo1 - Kpid;
-                         ForwardMotorA();
-                         ForwardMotorB();
+		}
+		else if(abs(error>500))
+		{
+			Kd = 1.05*Kd;
+			Kp = 1.05*Kp;
+		}
+		else
+		{
+			Kp = 0.35;
+			Kd= 2.245;
+		}
+		*/
 
-                         if(somaA>velomax)
-                         {
-                        	 somaA = velomax;
-                         }
-                         else if(somaA<0)
-                         {
-                        	 somaA = veloMin;
-                        	 //ParaTrasMotorA();
+		propo = Kp*error;                         //função proporcional
 
-                         }
+		//deriv = alpha * ((Kd * error) - (Kd * ultimoError)) + (1 - alpha) * deriv;
 
 
-                         somaB = Velo2 +Kpid;
+		deriv = Kd*(error) - (Kd*ultimoError);
+		ultimoError=error;
+		integral = 0;
+		for (int i = NUM_ERROS-1; i > 0; i--) {
+		 erros[i] = erros[i-1];
+		 integral += Ki*erros[i];
+		}
+		erros[0] = error;
+		integral += Ki*erros[0];
 
-                         if(somaB >velomax)
-                         {
-                        	 somaB = velomax;
-                         }
-                         else if(somaB<0)
-                         {
-                        	 //ParaTrasMotorB();
-                        	 somaB = veloMin;
-                         }
+		Kpid = (propo)+(deriv)+(integral);
 
-                         PWMA =(somaA);
-                         PWMB = (somaB);
+
+		ForwardMotorA();
+		ForwardMotorB();
+
+		Velo1 = 120;
+		Velo2 = 120;
+		if((erros[0]==0)&& (erros[1]==0) && (erros[2] ==0) && (erros[3] ==0) )
+		{
+		 Velo1 = 200;
+		 Velo2 = 200;
+		}
+
+		somaA = Velo1 - Kpid;
+		if(somaA>velomax)
+		{
+		 somaA = velomax;
+		}
+		else if(somaA<0)
+		{
+		 somaA = veloMin;
+
+		}
+
+
+		somaB = Velo2 +Kpid;
+
+		if(somaB >velomax)
+		{
+		 somaB = velomax;
+		}
+		else if(somaB<0)
+		{
+
+		 somaB = veloMin;
+		}
+
+	}
+
+
+	PWMA = (somaA);
+	PWMB = (somaB);
 
 }
 
