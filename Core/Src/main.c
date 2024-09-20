@@ -96,8 +96,8 @@ char Buffer[20];
  * ------------------------------------------------------------------*/
 int error=0; // Posição- (Maior peso)/2
 //constantes PID
-float Kp = 0.35;//2.025;
-float Kd= 2.245;//8.1
+float Kp = 0.25;//2.025;
+float Kd= 2.625;//8.1
 float Ki= 0.0225;////0.0001;
 
 //constantes auxiliares PID
@@ -367,17 +367,17 @@ void PID(){
 
 	 */
 	error = (pos - def_pos);
-	if(pos<=100)
+	if(pos<=200)
 	{
-		somaA = 100;
-		somaB = 200;
+		somaA = 250;
+		somaB = 350;
 		ParaTrasMotorA();
 
 	}
-	else if(pos>=1400)
+	else if(pos>=1300)
 	{
-		somaA = 200;
-		somaB = 100;
+		somaA = 350;
+		somaB = 250;
 		ParaTrasMotorB();
 	}
 	else
@@ -422,13 +422,14 @@ void PID(){
 
 		ForwardMotorA();
 		ForwardMotorB();
-
-		Velo1 = 120;
-		Velo2 = 120;
-		if((erros[0]==0)&& (erros[1]==0) && (erros[2] ==0) && (erros[3] ==0) )
+		// Valores funcional Velo12 = 200
+		Velo1 = 200;
+		Velo2 = 200;
+		if((abs(erros[0])<100)&& (abs(erros[1])<100) && (abs(erros[2]) <100) && (abs(erros[3])<0) )
 		{
-		 Velo1 = 200;
-		 Velo2 = 200;
+			// Valores funcional Velo12 = 250
+		 Velo1 = 250;
+		 Velo2 = 250;
 		}
 
 		somaA = Velo1 - Kpid;
