@@ -71,11 +71,13 @@ void ParaTrasMotorA();
 void ParaTrasMotorB();
 void ForwardMotorA();
 void ForwardMotorB();
+void Parar();
 
 const int selecionarPino[4] = {S0_Pin, S1_Pin, S2_Pin, S3_Pin};
 
 uint16_t valorSensor[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valores Analogico Sensores
 int sensorDigital[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valores Digitais Sensores
+int sensorDigitalAnterior[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 uint16_t corBranco[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Para calibração cor branca
 uint16_t corPreto[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Para calibração cor preta
 uint16_t mediaPB[16] ={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valor média calibração linha e chão
@@ -84,7 +86,7 @@ int16_t PWMA = 0;
 int16_t PWMB = 0;
 uint16_t pos = 0;
 int Kpid = 0;
-
+int bufferParada =0;
 uint16_t poslast = 0;
 uint16_t posLastMax = 1500;
 uint16_t posLastMin = 0;
@@ -97,7 +99,7 @@ char Buffer[20];
 int error=0; // Posição- (Maior peso)/2
 //constantes PID
 float Kp = 0.25;//2.025;
-float Kd= 2.625;//8.1
+float Kd= 2.725;//8.1
 float Ki= 0.0225;////0.0001;
 
 //constantes auxiliares PID
@@ -331,6 +333,7 @@ void leituraLinha() // Retorna Valor da média ponderada para utilizar no PID
 	        // soma ponderada
 	        num += sensorDigital[i] * peso[i];
 	        den += sensorDigital[i];
+	        sensorDigitalAnterior[i] = sensorDigital[i];
 	    }
 
 	    if (den != 0) {
@@ -355,11 +358,6 @@ void leituraLinha() // Retorna Valor da média ponderada para utilizar no PID
 	    }
 	    poslast = pos;
 
-
-
-
-
-
 }
 
 void PID(){
@@ -367,17 +365,18 @@ void PID(){
 
 	 */
 	error = (pos - def_pos);
+
 	if(pos<=200)
 	{
-		somaA = 250;
-		somaB = 350;
+		somaA = 275;
+		somaB = 375;
 		ParaTrasMotorA();
 
 	}
 	else if(pos>=1300)
 	{
-		somaA = 350;
-		somaB = 250;
+		somaA = 375;
+		somaB = 275;
 		ParaTrasMotorB();
 	}
 	else
@@ -456,6 +455,17 @@ void PID(){
 		 somaB = veloMin;
 		}
 
+
+		for(int i = 0; i<=3 ; i++)
+		{
+			if(sensorDigital[i] && !sensorDigital[i+2]&& sensorDigital[i+6] && !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] && !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15])
+			{
+				Parar();
+			}
+		}
+
+
+
 	}
 
 
@@ -464,6 +474,19 @@ void PID(){
 
 }
 
+void Parar()
+{
+    HAL_GPIO_WritePin(STBY_GPIO_Port, STBY_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(AI1_GPIO_Port,AI1_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(AI2_GPIO_Port,AI2_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(BI1_GPIO_Port,BI1_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(BI2_GPIO_Port,BI2_Pin, GPIO_PIN_RESET);
+	somaA =0;
+	somaB =0;
+	estado = 0;
+	PWMA = (somaA);
+	PWMB = (somaB);
+}
 void setPWM()
 {
 
@@ -598,7 +621,7 @@ int main(void)
 	  		    leituraLinha();
 	  		    PID();
 	  		    setPWM();
-	  		    estado = 2;
+	  		    //estado = 2;
 
 
 	  	break;
