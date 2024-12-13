@@ -24,6 +24,7 @@
 #include "nokia5110_LCD.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 
 /* USER CODE END Includes */
@@ -48,6 +49,7 @@ ADC_HandleTypeDef hadc1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
 
@@ -60,16 +62,27 @@ static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void ParaTrasMotorA();
+void ParaTrasMotorB();
+void ForwardMotorA();
+void ForwardMotorB();
+void Parar();
+
 const int selecionarPino[4] = {S0_Pin, S1_Pin, S2_Pin, S3_Pin};
 
 uint16_t valorSensor[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valores Analogico Sensores
-int sensorDigital[16] = 	{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valores Digitais Sensores
+int sensorDigital[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valores Digitais Sensores
+int sensorDigitalAnterior[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+uint16_t valorMedicao = 0;
+bool auxiliarMedicao = false;
 uint16_t corBranco[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Para calibração cor branca
 uint16_t corPreto[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Para calibração cor preta
 uint16_t mediaPB[16] ={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}; // Valor média calibração linha e chão
@@ -77,35 +90,41 @@ uint16_t peso[16] = {1500, 1400, 1300, 1200, 1100, 1000, 900, 800, 700, 600, 500
 int16_t PWMA = 0;
 int16_t PWMB = 0;
 uint16_t pos = 0;
+bool criterioParada = false;
 int Kpid = 0;
-int poslast = 0;
-int linha = 0; // 0 -> Linha preta // 1-> Linha Branco
+int bufferParada =0;
+uint16_t poslast = 0;
+uint16_t posLastMax = 1500;
+uint16_t posLastMin = 0;
+uint16_t posMax = 1500;
+uint16_t posMin = 0;
+int linha = 1; // 0 -> Linha preta // 1-> Linha Branco
 char Buffer[20];
-/* Variáveis PID --------------------------------------------------------------------*/
+/* Variáveis PID --
+ * ------------------------------------------------------------------*/
 int error=0; // Posição- (Maior peso)/2
 //constantes PID
-float Kp = 1.2;
-float Kd=2.5;
-float Ki=0.01;
+float Kp = 0.2;//
+float Kd= 2.725;//
+float Ki= 0.0225;//
 
 //constantes auxiliares PID
-int def_pos = 750;
+uint16_t def_pos = 750;
 int propo=0;
 int deriv=0;
 int integral=0;
-int ultimopropo=0;
+int ultimoError=0;
+
+float alpha = 0.1;
 // Erro Integral
-int error1=0;
-int error2=0;
-int error3=0;
-int error4=0;
-int error5=0;
-int error6=0;
+int erros[10] = {0, 0, 0, 0, 0,0,0,0,0,0};
+int NUM_ERROS = 10;
 
 //velocidades base
-uint16_t Velo1= 1050; // Motor Direita
-uint16_t Velo2= 1050; // Motor Esquerda
-uint16_t velomax= 2500;//4560
+int16_t Velo1= 200; // Motor Direita
+int16_t Velo2= 200; // Motor Esquerda
+uint16_t velomax = 500;// CCR Máximo
+uint16_t veloMin = 0;
 int16_t somaA = 0;
 int16_t somaB =0;
 
@@ -117,14 +136,52 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	if(GPIO_Pin == BOT1_Pin) // Ações ao apertar o botão 1
 	{
 		LCD_clrScr();
-		estado = 1;
+
+		if(estado == 0)
+		{
+			estado = 1;
+			LCD_clrScr();
+		}
+
+		else if(estado == 1)
+		{
+			estado = 0;
+			LCD_clrScr();
+		}
 
 
 	}
 	if(GPIO_Pin == BOT2_Pin) // Ações ao apertar botão 2
 	{
+
 		estado = 2;
+		LCD_clrScr();
+		criterioParada = false;
+		__HAL_TIM_SET_AUTORELOAD(&htim4, 15000-1);  // Reinicia o contador para zero
+
+
+
 	}
+	LCD_clrScr();
+}
+
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if(htim->Instance == TIM4)
+	{
+		HAL_TIM_Base_Stop_IT(&htim4);
+		criterioParada = true;
+	}
+
+
+}
+
+
+void printValue(int value, int x, int y) {
+    char Buffer[16];  // Tamanho adequado para os valores a serem exibidos
+    sprintf(Buffer, "%d", value);  // Formata o valor como string
+    LCD_print(Buffer, x, y);  // Exibe no LCD
 }
 
 void selecionarPinoMux(int pino)
@@ -156,6 +213,88 @@ void selecionarPinoMux(int pino)
 
 	}
 }
+
+
+void calibracao()
+{
+	if(!auxiliarMedicao)
+	{
+		for(int i = 0; i<6; i++)
+			{
+				selecionarPinoMux(i);
+				HAL_ADC_Start(&hadc1);
+				HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+				corBranco[5-i] = HAL_ADC_GetValue(&hadc1);
+			}
+			for(int j = 10; j<16; j++ )
+			{
+				selecionarPinoMux(j);
+				HAL_ADC_Start(&hadc1);
+				HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+				corBranco[25-j] = HAL_ADC_GetValue(&hadc1);
+			}
+			for(int k = 6; k<10; k++)
+			{
+				selecionarPinoMux(k);
+				HAL_ADC_Start(&hadc1);
+				HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+				corBranco[k] = HAL_ADC_GetValue(&hadc1);
+			}
+			auxiliarMedicao = true;
+	}
+	else
+	{
+		for(int i = 0; i<6; i++)
+		{
+				selecionarPinoMux(i);
+				HAL_ADC_Start(&hadc1);
+				HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+				valorMedicao = HAL_ADC_GetValue(&hadc1);
+				if(valorMedicao > corPreto[5-i])
+				{
+					corPreto[5-i] = valorMedicao;
+				}
+				if(valorMedicao < corBranco[5-i])
+				{
+					corBranco[5-i] = valorMedicao;
+				}
+		}
+		for(int j = 10; j<16; j++ )
+		{
+			selecionarPinoMux(j);
+			HAL_ADC_Start(&hadc1);
+			HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+			valorMedicao = HAL_ADC_GetValue(&hadc1);
+			if(valorMedicao > corPreto[25-j])
+			{
+				corPreto[25-j] = valorMedicao;
+			}
+			if(valorMedicao < corBranco[25-j])
+			{
+				corBranco[25-j] = valorMedicao;
+			}
+		}
+		for(int k = 6; k<10; k++)
+		{
+			selecionarPinoMux(k);
+			HAL_ADC_Start(&hadc1);
+			HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+			valorMedicao = HAL_ADC_GetValue(&hadc1);
+			if(valorMedicao > corPreto[k])
+			{
+				corPreto[k] = valorMedicao;
+			}
+			if(valorMedicao < corBranco[k])
+			{
+				corBranco[k] = valorMedicao;
+			}
+
+		}
+
+	}
+}
+
+/*
 
 void calibrarBranco() // Função de Medir a cor Branca
 {
@@ -198,6 +337,7 @@ void calibrarPreto() // Função de medir a cor Preta
 		HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
 		corPreto[25-j] = HAL_ADC_GetValue(&hadc1);
 	}
+
 	for(int k = 6; k<10; k++)
 	{
 		selecionarPinoMux(k);
@@ -206,6 +346,8 @@ void calibrarPreto() // Função de medir a cor Preta
 		corPreto[k] = HAL_ADC_GetValue(&hadc1);
 	}
 }
+
+*/
 
 void calcularMediaSensores() // Calculo Média das cores para calibração dos sensores
 {
@@ -267,11 +409,11 @@ void aplicarCalibracao() // Determina os valores digitais dos sensores apos cali
 		{
 			if(valorSensor[25-j] <= mediaPB[25-j])
 			{
-				sensorDigital[25-j] = 0;
+				sensorDigital[25-j] = 1;
 			}
 			else
 			{
-				sensorDigital[25-j] = 1;
+				sensorDigital[25-j] = 0;
 			}
 		}
 	}
@@ -319,20 +461,30 @@ void leituraLinha() // Retorna Valor da média ponderada para utilizar no PID
 	        // soma ponderada
 	        num += sensorDigital[i] * peso[i];
 	        den += sensorDigital[i];
+	        sensorDigitalAnterior[i] = sensorDigital[i];
 	    }
-	    pos = (num / den);
-	    if(poslast<=100 && pos==-1){
-	      pos=0;
+
+	    if (den != 0) {
+	        pos = (num / den);
 	    }
-	    if(poslast>=1400 && pos==-1){
-	      pos=1500;
+	    /*
+	    else if(num == 0)
+	    {
+	    	pos = 0;
+	    }
+	    */
+	    else
+	    {
+	        pos = poslast;
+	    }
+
+	    if(poslast<=posLastMin && pos==-1){
+	      pos=posMin;
+	    }
+	    if(poslast>=posLastMax && pos==-1){
+	      pos=posMax;
 	    }
 	    poslast = pos;
-
-
-
-
-
 
 }
 
@@ -340,52 +492,305 @@ void PID(){
 	/* Essa função atualiza os valores das variáveis PWMA e PWMB, as variáveis veloA e veloB forma a velocidade base
 
 	 */
-                         error = (pos - def_pos);
-                         propo= error;                         //função proporcional
-                         deriv=propo-ultimopropo;             //função derivativo
-                         integral=error1 + error2 + error3+ error4+ error5+ error6;                //função integral
-                         ultimopropo=propo;
-                         error6=error5;
-                         error5=error4;
-                         error4=error3;
-                         error3=error2;
-                         error2=error1;
-                         error1=propo;
-                         Kpid = (Kp*propo)+(deriv*Kd)+(integral*Ki);
-                         if(Kpid>velomax)
-                         {
-							Kpid=velomax;
-                         }
-                         else if (Kpid<-velomax)
-                         {
-                        	 Kpid=-velomax;
-                         }
-                         somaA = Velo1 - Kpid;
-                         if(somaA>velomax)
-                         {
-                        	 somaA = velomax;
-                         }
-                         else if (somaA <-velomax)
-                         {
-                        	 somaA = velomax;
-                         }
-                         somaB = Velo2 +Kpid;
+	error = (pos - def_pos);
 
-                         if(somaB >velomax)
-                         {
-                        	 somaB = velomax;
-                         }
-                         else if (somaB < - velomax)
-                         {
-                        	 somaB = velomax;
-                         }
-                         PWMA =(somaA);
-                         PWMB = (somaB);
+	if(pos<=300)
+	{
+		somaA = 300;
+		somaB = 400;
+		//criterioParada = true;
+		ParaTrasMotorA();
 
+	}
+	else if(pos>=1200)
+	{
+		somaA = 400;
+		somaB = 300;
+		//criterioParada = true;
+		ParaTrasMotorB();
+	}
+	else
+	{
 
+		/*
+		if(abs(error)> 600)
+		{
+			Kd = 1.1*Kd;
+			Kp = 1.1*Kp;
 
+		}
+		else if(abs(error>500))
+		{
+			Kd = 1.05*Kd;
+			Kp = 1.05*Kp;
+		}
+		else
+		{
+			Kp = 0.35;
+			Kd= 2.245;
+		}
+		*/
+
+		propo = Kp*error;                         //função proporcional
+
+		//deriv = alpha * ((Kd * error) - (Kd * ultimoError)) + (1 - alpha) * deriv;
 
 
+		deriv = Kd*(error) - (Kd*ultimoError);
+		ultimoError=error;
+		integral = 0;
+		for (int i = NUM_ERROS-1; i > 0; i--) {
+		 erros[i] = erros[i-1];
+		 integral += Ki*erros[i];
+		}
+		erros[0] = error;
+		integral += Ki*erros[0];
+
+		Kpid = (propo)+(deriv)+(integral);
+
+
+		ForwardMotorA();
+		ForwardMotorB();
+		// Valores funcional Velo12 = 200
+		Velo1 = 200;
+		Velo2 = 200;
+
+		if((abs(erros[0])<100)&& (abs(erros[1])<100) && (abs(erros[2]) <100) && (abs(erros[3])<0) )
+		{
+			// Valores funcional Velo12 = 250
+		 Velo1 = 250;
+		 Velo2 = 250;
+
+		}
+		/*
+		else
+		{
+			// Valores funcional Velo12 = 200
+			Velo1 = 200;
+			Velo2 = 200;
+		}
+		*/
+
+		somaA = Velo1 - Kpid;
+		if(somaA>velomax)
+		{
+		 somaA = velomax;
+		}
+		else if(somaA<0)
+		{
+		 somaA = veloMin;
+
+		}
+
+
+		somaB = Velo2 +Kpid;
+
+		if(somaB >velomax)
+		{
+		 somaB = velomax;
+		}
+		else if(somaB<0)
+		{
+
+		 somaB = veloMin;
+		}
+
+
+		if(criterioParada)
+		{
+
+			    // Condição 1 - C
+			    if (sensorDigital[0] && !sensorDigital[1] && !sensorDigital[2] && sensorDigital[4] && sensorDigital[5] &&
+			        !sensorDigital[3] && !sensorDigital[6] && !sensorDigital[7] && !sensorDigital[8] &&
+			        !sensorDigital[9] && !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] &&
+			        !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 2 - C
+			    else if (sensorDigital[0] && !sensorDigital[1] && !sensorDigital[2] && sensorDigital[4] && sensorDigital[5] && sensorDigital[6] &&
+			        !sensorDigital[3] && !sensorDigital[7] && !sensorDigital[8] &&
+			        !sensorDigital[9] && !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] &&
+			        !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 3 - C
+			    else if (sensorDigital[0] && sensorDigital[1] && !sensorDigital[2] && sensorDigital[5] && sensorDigital[6] &&
+			        !sensorDigital[3] && !sensorDigital[4] && !sensorDigital[7] && !sensorDigital[8] &&
+			        !sensorDigital[9] && !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] &&
+			        !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 4 - c
+			    else if (sensorDigital[0] && sensorDigital[1] && !sensorDigital[2] && sensorDigital[5]
+												   && sensorDigital[6] && !sensorDigital[7] &&
+			        !sensorDigital[3] && !sensorDigital[4] && !sensorDigital[8] && !sensorDigital[9] &&
+			        !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] && !sensorDigital[13] &&
+			        !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 5 - C
+			    else if (sensorDigital[0] && sensorDigital[1] && !sensorDigital[2] && !sensorDigital[3] &&
+			        !sensorDigital[4] && sensorDigital[6] && sensorDigital[7] &&
+			        sensorDigital[5] && !sensorDigital[8] && !sensorDigital[9] &&
+			        !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] &&
+			        !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 6 -c
+			    else if (sensorDigital[0] && sensorDigital[1] && !sensorDigital[2] && !sensorDigital[3] &&
+			        !sensorDigital[4] && sensorDigital[6] && sensorDigital[7] &&
+			        !sensorDigital[5] && !sensorDigital[8] && !sensorDigital[9] &&
+			        !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] &&
+			        !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 7 - C
+			    else if (sensorDigital[0] && sensorDigital[1] && sensorDigital[2] && !sensorDigital[3] &&
+			        !sensorDigital[4] && sensorDigital[6] && sensorDigital[7] && !sensorDigital[8] &&
+			        !sensorDigital[5] && !sensorDigital[9] && !sensorDigital[10] &&
+			        !sensorDigital[11] && !sensorDigital[12] && !sensorDigital[13] &&
+			        !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 8 - C
+			    else if (sensorDigital[0] && sensorDigital[1] && sensorDigital[2] && !sensorDigital[3] &&
+			        sensorDigital[7] && sensorDigital[8] && !sensorDigital[4] &&
+			        !sensorDigital[5] && sensorDigital[6] && !sensorDigital[9] &&
+			        !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] &&
+			        !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 9 -  c
+			    else if (sensorDigital[0] && sensorDigital[1] && sensorDigital[2] && !sensorDigital[3] &&
+			        sensorDigital[8] && !sensorDigital[9] && !sensorDigital[4] &&
+			        !sensorDigital[5] && !sensorDigital[6] && sensorDigital[7] &&
+			        !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] &&
+			        !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 10 -c
+			    else if (sensorDigital[0] && sensorDigital[1] && sensorDigital[2] && sensorDigital[3] &&
+			        !sensorDigital[4] && sensorDigital[8] && sensorDigital[9] &&
+			        !sensorDigital[5] && !sensorDigital[6] && sensorDigital[7] &&
+			        !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] &&
+			        !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 11
+			    else if (sensorDigital[0] && sensorDigital[1] && sensorDigital[2] && sensorDigital[3] &&
+			        !sensorDigital[4] && sensorDigital[8] && sensorDigital[9] && !sensorDigital[10] &&
+			        !sensorDigital[5] && !sensorDigital[6] && !sensorDigital[7] &&
+			        !sensorDigital[11] && !sensorDigital[12] && !sensorDigital[13] &&
+			        !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 12
+			    else if (sensorDigital[0] && sensorDigital[1] && sensorDigital[2] && sensorDigital[3] &&
+			        sensorDigital[4] && sensorDigital[9] && !sensorDigital[10] &&
+			        !sensorDigital[5] && !sensorDigital[6] && !sensorDigital[7] &&
+			        sensorDigital[8] && !sensorDigital[11] && !sensorDigital[12] &&
+			        !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 13
+			    else if (sensorDigital[1] && sensorDigital[2] && sensorDigital[3] && sensorDigital[4] &&
+			        !sensorDigital[5] && sensorDigital[9] && sensorDigital[10] && !sensorDigital[11] &&
+			        sensorDigital[0] && !sensorDigital[6] && !sensorDigital[7] &&
+			        sensorDigital[8] && !sensorDigital[12] && !sensorDigital[13] &&
+			        !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 14
+			    else if (sensorDigital[1] && sensorDigital[2] && sensorDigital[3] && sensorDigital[4] &&
+			        !sensorDigital[5] && sensorDigital[9] && sensorDigital[10] && !sensorDigital[11] &&
+			        sensorDigital[0] && !sensorDigital[6] && !sensorDigital[7] &&
+			        !sensorDigital[8] && !sensorDigital[12] && !sensorDigital[13] &&
+			        !sensorDigital[14] && !sensorDigital[15]) {
+			        Parar();
+			    }
+
+			    // Condição 15
+			    else if (sensorDigital[2] && sensorDigital[3] && sensorDigital[4] && sensorDigital[5] &&
+			        sensorDigital[10] && sensorDigital[11] &&
+			        !sensorDigital[0] && sensorDigital[1] && !sensorDigital[6] &&
+			        !sensorDigital[7] && !sensorDigital[8] && sensorDigital[9] &&
+			        !sensorDigital[12] && !sensorDigital[13] && !sensorDigital[14] &&
+			        !sensorDigital[15]) {
+			        Parar();
+			    }
+			    // Condição 16
+			    else if (sensorDigital[2] && sensorDigital[3] && sensorDigital[4] && sensorDigital[5] &&
+			        sensorDigital[10] && sensorDigital[11] &&
+			        !sensorDigital[0] && sensorDigital[1] && !sensorDigital[6] &&
+			        !sensorDigital[7] && !sensorDigital[8] && !sensorDigital[9] &&
+			        !sensorDigital[12] && !sensorDigital[13] && !sensorDigital[14] &&
+			        !sensorDigital[15]) {
+			        Parar();
+			    }
+			    // Condição 17
+			    else if (sensorDigital[2] && sensorDigital[3] && sensorDigital[4] && sensorDigital[5] &&
+			        sensorDigital[10] && sensorDigital[11] &&
+			        !sensorDigital[0] && !sensorDigital[1] && !sensorDigital[6] &&
+			        !sensorDigital[7] && !sensorDigital[8] && !sensorDigital[9] &&
+			        !sensorDigital[12] && !sensorDigital[13] && !sensorDigital[14] &&
+			        !sensorDigital[15]) {
+			        Parar();
+			    }
+
+
+		}
+
+		/*
+		else
+		{
+			for(int i = 0; i<=3 ; i++)
+			{
+				if(sensorDigital[i] && !sensorDigital[i+2]&& sensorDigital[i+6] && !sensorDigital[10] && !sensorDigital[11] && !sensorDigital[12] && !sensorDigital[13] && !sensorDigital[14] && !sensorDigital[15])
+				{
+					criterioParada = true;
+				}
+			}
+			HAL_Delay(500);
+		}
+		*/
+
+
+
+
+	}
+	//Velo1 = abs((somaA+somaB)/2);
+	//Velo2 = Velo1;
+
+	PWMA = (somaA);
+	PWMB = (somaB);
+
+}
+
+void Parar()
+{
+    HAL_GPIO_WritePin(STBY_GPIO_Port, STBY_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(AI1_GPIO_Port,AI1_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(AI2_GPIO_Port,AI2_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(BI1_GPIO_Port,BI1_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(BI2_GPIO_Port,BI2_Pin, GPIO_PIN_RESET);
+	somaA =0;
+	somaB =0;
+	estado = 0;
+	PWMA = (somaA);
+	PWMB = (somaB);
 }
 void setPWM()
 {
@@ -395,19 +800,32 @@ void setPWM()
 
 }
 
-void ligarMotorA() // Motor A-> Esquerda
+void ForwardMotorA() // Motor A-> Esquerda
 {
 	HAL_GPIO_WritePin(STBY_GPIO_Port,STBY_Pin, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(AI1_GPIO_Port,AI1_Pin, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(AI2_GPIO_Port,AI2_Pin, GPIO_PIN_RESET);
 }
 
-void ligarMotorB() // Motor B-> Direita
+void ForwardMotorB() // Motor B-> Direita
 {
-
 	HAL_GPIO_WritePin(BI1_GPIO_Port,BI1_Pin, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(BI2_GPIO_Port,BI2_Pin, GPIO_PIN_RESET);
 }
+
+void ParaTrasMotorA()
+{
+	HAL_GPIO_WritePin(AI1_GPIO_Port,AI1_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(AI2_GPIO_Port,AI2_Pin, GPIO_PIN_SET);
+}
+
+void ParaTrasMotorB()
+{
+	HAL_GPIO_WritePin(BI1_GPIO_Port,BI1_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(BI2_GPIO_Port,BI2_Pin, GPIO_PIN_SET);
+}
+
+
 /* USER CODE END 0 */
 
 /**
@@ -416,6 +834,7 @@ void ligarMotorB() // Motor B-> Direita
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -446,6 +865,7 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   LCD_init();
 
@@ -453,6 +873,7 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_GPIO_WritePin(EN_GPIO_Port,EN_Pin, GPIO_PIN_RESET); // EN do MUX como 0
+  HAL_TIM_Base_Start_IT(&htim4);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -465,22 +886,46 @@ int main(void)
 	  switch(estado)
 	  {
 	  	 case 0:
-	  		 LCD_clrScr();
+
+
+
 	  		aplicarCalibracao();
 	  		leituraLinha();
 	  		PID();
-			sprintf(Buffer, "%d", pos);
-			LCD_print(Buffer, 3, 3);
-			sprintf(Buffer, "%d", PWMA);
-			LCD_print(Buffer, 0, 0);
-			sprintf(Buffer, "%d", PWMB);
-			LCD_print(Buffer, 1, 1);
 
+
+	  		printValue(pos, 3, 0);
+	  		printValue(PWMA, 3, 1);
+	  		printValue(PWMB, 3, 2);
+	  		printValue(error, 3, 3);
+
+
+			LCD_clrScr();
 		 break;
 
 	  	 case 1:
-	  		LCD_clrScr();
 
+
+	  		calibracao();
+
+	  		calcularMediaSensores();
+	  		aplicarCalibracao();
+
+	  		sprintf(Buffer, "%d%d%d%d%d%d%d%d%d%d%d%d",
+	  		    sensorDigital[11], sensorDigital[10], sensorDigital[9], sensorDigital[8],
+	  		    sensorDigital[7], sensorDigital[6], sensorDigital[5], sensorDigital[4],
+	  		    sensorDigital[3], sensorDigital[2], sensorDigital[1], sensorDigital[0]);
+
+	  		LCD_print(Buffer, 0, 2);
+
+	  		sprintf(Buffer, "%d%d%d%d",
+	  		    sensorDigital[15], sensorDigital[14], sensorDigital[13], sensorDigital[12]);
+
+	  		LCD_print(Buffer, 0, 1);
+
+
+
+	  		/*
 	  		LCD_print("Calibrar Preto", 0, 0);
 	  		HAL_Delay(5000);
 	  		calibrarPreto();
@@ -489,26 +934,22 @@ int main(void)
 	  		HAL_Delay(5000);
 	  		calibrarBranco();
 	  		calcularMediaSensores();
-  		    ligarMotorA();
-  		    ligarMotorB();
+
 	  		LCD_clrScr();
 	  		LCD_print("Calibrado", 0, 0);
 	  		aplicarCalibracao();
 	  		estado = 0;
-
-
+			*/
 	  	break;
 
 	  	case 2:
-	  			LCD_clrScr();
-	  			LCD_print("Começar andar", 0, 0);
+	  			//LCD_print("Começar andar", 0, 0);
+
 	  			aplicarCalibracao();
 	  		    leituraLinha();
 	  		    PID();
-
 	  		    setPWM();
-	  		    estado = 2;
-
+	  		    //estado = 2;
 
 	  	break;
 	  }
@@ -621,6 +1062,7 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
   TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
@@ -629,12 +1071,21 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 0;
+  htim1.Init.Prescaler = 15;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 4570;
+  htim1.Init.Period = 501;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
   {
     Error_Handler();
@@ -686,6 +1137,7 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
@@ -693,11 +1145,20 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
+  htim2.Init.Prescaler = 15;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4570;
+  htim2.Init.Period = 501;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
@@ -720,6 +1181,51 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 2 */
   HAL_TIM_MspPostInit(&htim2);
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 16000-1;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 0;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
 
 }
 
